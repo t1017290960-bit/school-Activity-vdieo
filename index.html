@@ -1,632 +1,377 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-Hant" class="h-full">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>影片匯入與播放器</title>
+  <title>相片循環播放器</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
-    /* 隱藏滾動條但保持滾動 */
-    .no-scrollbar::-webkit-scrollbar { display: none; }
-    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-
-    /* 視窗劇院/滿版全螢幕 (防止 iframe 限制原生全螢幕 API) */
-    .web-fullscreen {
-      position: fixed !important;
-      inset: 0 !important;
-      width: 100vw !important;
-      height: 100vh !important;
-      max-width: 100vw !important;
-      max-height: 100vh !important;
-      z-index: 9999 !important;
-      border-radius: 0 !important;
-      border: none !important;
-      background-color: #000 !important;
-      margin: 0 !important;
+    .fade-enter {
+      opacity: 0;
+      transform: scale(1.02);
+    }
+    .fade-active {
+      opacity: 1;
+      transform: scale(1);
+      transition: opacity 0.8s ease-in-out, transform 1.2s ease-out;
+    }
+    .fade-exit {
+      opacity: 0;
+      transition: opacity 0.8s ease-in-out;
+    }
+    .hide-controls {
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.5s ease;
     }
   </style>
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col font-sans">
+<body class="bg-zinc-950 text-white h-full flex flex-col overflow-hidden select-none font-sans">
 
-  <!-- 頂部導覽列 -->
-  <header class="border-b border-slate-800 bg-slate-950/70 backdrop-blur px-6 py-4 flex items-center justify-between">
-    <div class="flex items-center gap-3">
-      <div class="w-10 h-10 rounded-xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center text-lg shadow-inner">
-        <i class="fa-solid fa-play"></i>
-      </div>
-      <div>
-        <h1 class="font-bold text-lg text-white tracking-wide">影音多媒體播放器</h1>
-        <p class="text-xs text-slate-400">支援本地檔案匯入、拖放與網路影片網址播放</p>
-      </div>
-    </div>
-    <div class="flex items-center gap-3">
-      <div class="hidden sm:flex items-center gap-2 text-xs text-slate-400 bg-slate-800/60 px-3 py-1.5 rounded-lg border border-slate-700/50">
-        <i class="fa-regular fa-keyboard text-indigo-400"></i>
-        <span>空白鍵: 播放/暫停 | 方向鍵: 快進退5秒 | F: 全螢幕</span>
-      </div>
-      <button id="exportHtmlBtn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium transition shadow-md shadow-emerald-600/20 cursor-pointer" title="將此播放器下載為獨立 HTML 檔案">
-        <i class="fa-solid fa-download"></i>
-        <span>下載 HTML 檔</span>
-      </button>
-    </div>
-  </header>
+  <!-- 幻燈片主容器 -->
+  <div id="slideshow-container" class="relative flex-1 w-full h-full overflow-hidden bg-black flex items-center justify-center">
+    
+    <!-- 兩層影像元素切換實現極度流暢的淡入淡出 -->
+    <div id="slide-a" class="absolute inset-0 bg-contain bg-center bg-no-repeat transition-all"></div>
+    <div id="slide-b" class="absolute inset-0 bg-contain bg-center bg-no-repeat transition-all opacity-0"></div>
 
-  <!-- 主要內容區 -->
-  <main class="flex-1 max-w-6xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-    <!-- 左側 / 上方：影片播放與控制核心 (佔 2 欄) -->
-    <div class="lg:col-span-2 space-y-4">
-      <!-- 播放器視窗容器 -->
-      <div class="relative bg-black rounded-2xl overflow-hidden shadow-2xl border border-slate-800 aspect-video flex items-center justify-center group" id="playerContainer">
-        
-        <!-- 空狀態提示（未載入影片） -->
-        <div id="placeholderView" class="text-center p-8 transition-all">
-          <div class="w-16 h-16 rounded-full bg-slate-800/80 text-slate-400 mx-auto flex items-center justify-center text-2xl mb-4 border border-slate-700/50">
-            <i class="fa-solid fa-film"></i>
-          </div>
-          <h2 class="text-lg font-medium text-slate-200 mb-1">尚未載入影片</h2>
-          <p class="text-xs text-slate-400 max-w-sm mx-auto mb-4">您可以從右側面板選擇本地影片檔案，或直接將檔案拖曳至此處。</p>
-          <label for="directFileInput" class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium rounded-lg cursor-pointer transition shadow-lg shadow-indigo-600/20">
-            <i class="fa-solid fa-folder-open"></i> 選擇本機影片
-          </label>
-          <input type="file" id="directFileInput" accept="video/*" class="hidden">
-        </div>
-
-        <!-- 影片標籤 -->
-        <video id="videoElement" class="w-full h-full object-contain hidden" playsinline controls></video>
-
-        <!-- 拖放高亮層 -->
-        <div id="dropOverlay" class="absolute inset-0 bg-indigo-950/80 border-2 border-dashed border-indigo-400 rounded-2xl flex flex-col items-center justify-center gap-2 pointer-events-none opacity-0 transition-opacity">
-          <i class="fa-solid fa-cloud-arrow-up text-4xl text-indigo-300 animate-bounce"></i>
-          <p class="text-sm font-medium text-indigo-100">放開以載入影片</p>
-        </div>
+    <!-- 頂部控制欄（浮動） -->
+    <header id="top-bar" class="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/80 via-black/40 to-transparent flex items-center justify-between z-30 transition-opacity duration-300">
+      <div class="flex items-center gap-3">
+        <span class="bg-indigo-600/90 text-xs px-2.5 py-1 rounded-full font-medium tracking-wide">
+          <i class="fa-solid fa-images mr-1"></i>相片輪播
+        </span>
+        <span id="counter" class="text-sm font-medium text-zinc-300">1 / 5</span>
       </div>
 
-      <!-- 快捷操作工具條 -->
-      <div id="playbackToolbar" class="bg-slate-800/50 border border-slate-700/40 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 text-xs">
-        <div class="flex items-center gap-2">
-          <span class="text-slate-400 font-medium">播放速度:</span>
-          <div class="flex bg-slate-900 rounded-lg p-0.5 border border-slate-700/60" id="speedButtons">
-            <button data-speed="0.5" class="speed-btn px-2.5 py-1 rounded text-slate-400 hover:text-white transition">0.5x</button>
-            <button data-speed="1" class="speed-btn px-2.5 py-1 rounded bg-indigo-600 text-white font-medium shadow-sm">1.0x</button>
-            <button data-speed="1.25" class="speed-btn px-2.5 py-1 rounded text-slate-400 hover:text-white transition">1.25x</button>
-            <button data-speed="1.5" class="speed-btn px-2.5 py-1 rounded text-slate-400 hover:text-white transition">1.5x</button>
-            <button data-speed="2" class="speed-btn px-2.5 py-1 rounded text-slate-400 hover:text-white transition">2.0x</button>
-          </div>
-        </div>
+      <div class="flex items-center gap-2">
+        <!-- 上傳本地照片按鈕 -->
+        <label class="cursor-pointer bg-white/10 hover:bg-white/20 active:scale-95 transition px-3 py-1.5 rounded-lg text-sm flex items-center gap-2 backdrop-blur-md">
+          <i class="fa-solid fa-cloud-arrow-up text-indigo-400"></i>
+          <span>新增相片</span>
+          <input type="file" id="file-input" multiple accept="image/*" class="hidden">
+        </label>
 
-        <div class="flex items-center gap-2">
-          <!-- 循環播放切換 -->
-          <button id="loopBtn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700/60 text-slate-400 hover:text-white transition" title="循環播放開關">
-            <i class="fa-solid fa-repeat"></i>
-            <span id="loopStatus">單次播放</span>
-          </button>
-
-          <!-- 畫面截圖 -->
-          <button id="captureBtn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700/60 text-slate-400 hover:text-white transition" title="擷取當前畫面">
-            <i class="fa-solid fa-camera"></i>
-            <span>截圖</span>
-          </button>
-
-          <!-- 全螢幕切換 -->
-          <button id="fullscreenBtn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600/30 border border-indigo-500/50 text-indigo-300 hover:bg-indigo-600 hover:text-white transition" title="全螢幕切換 (快速鍵: F)">
-            <i class="fa-solid fa-expand"></i>
-            <span id="fsStatusText">全螢幕</span>
-          </button>
-        </div>
+        <!-- 全螢幕切換按鈕（醒目標註） -->
+        <button id="fullscreen-btn" class="bg-indigo-600 hover:bg-indigo-500 active:scale-95 transition px-3.5 py-1.5 rounded-lg text-sm flex items-center gap-1.5 backdrop-blur-md text-white font-medium shadow-md shadow-indigo-600/30" title="切換全螢幕 (快捷鍵: F)">
+          <i id="fs-icon" class="fa-solid fa-expand"></i>
+          <span id="fs-text">全螢幕播放</span>
+        </button>
       </div>
+    </header>
 
-      <!-- 影片詳細資訊卡片 -->
-      <div id="videoInfoCard" class="bg-slate-800/30 border border-slate-700/30 rounded-xl p-4 hidden">
-        <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-          <i class="fa-solid fa-circle-info text-indigo-400"></i> 當前影片資訊
-        </h3>
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-          <div class="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
-            <div class="text-slate-500 mb-0.5">檔案名稱</div>
-            <div id="infoName" class="font-medium text-slate-200 truncate" title="-">-</div>
-          </div>
-          <div class="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
-            <div class="text-slate-500 mb-0.5">解析度</div>
-            <div id="infoResolution" class="font-medium text-slate-200">-</div>
-          </div>
-          <div class="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
-            <div class="text-slate-500 mb-0.5">長度</div>
-            <div id="infoDuration" class="font-medium text-slate-200">-</div>
-          </div>
-          <div class="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
-            <div class="text-slate-500 mb-0.5">來源類型</div>
-            <div id="infoSource" class="font-medium text-indigo-400">-</div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <!-- 左右切換按鈕 -->
+    <button id="prev-btn" class="control-ui absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-black/40 hover:bg-black/70 active:scale-90 text-white backdrop-blur-md flex items-center justify-center transition-all z-20" title="上一張">
+      <i class="fa-solid fa-chevron-left text-lg"></i>
+    </button>
+    <button id="next-btn" class="control-ui absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-black/40 hover:bg-black/70 active:scale-90 text-white backdrop-blur-md flex items-center justify-center transition-all z-20" title="下一張">
+      <i class="fa-solid fa-chevron-right text-lg"></i>
+    </button>
 
-    <!-- 右側：匯入與播放紀錄設定 (佔 1 欄) -->
-    <div class="space-y-5">
+    <!-- 底部控制面版與指示器 -->
+    <div id="bottom-bar" class="absolute bottom-0 left-0 right-0 p-5 bg-gradient-to-t from-black/85 via-black/40 to-transparent flex flex-col items-center gap-3 z-30 transition-opacity duration-300">
       
-      <!-- 匯入方式切換卡 -->
-      <div class="bg-slate-800/40 border border-slate-700/40 rounded-2xl p-5 shadow-sm space-y-4">
-        <h2 class="text-sm font-semibold text-white flex items-center gap-2">
-          <i class="fa-solid fa-arrow-down-to-bracket text-indigo-400"></i> 匯入影片
-        </h2>
+      <!-- 圓點導航 -->
+      <div id="dots-container" class="flex items-center gap-1.5 py-1"></div>
 
-        <!-- 本地檔案上傳拖拉區 -->
-        <div>
-          <label class="block text-xs font-medium text-slate-300 mb-1.5">方式 1: 本機檔案上傳</label>
-          <div id="dropZone" class="border-2 border-dashed border-slate-700 hover:border-indigo-500/80 bg-slate-900/40 hover:bg-indigo-950/10 rounded-xl p-4 text-center cursor-pointer transition flex flex-col items-center justify-center gap-2 group">
-            <div class="w-10 h-10 rounded-full bg-slate-800 group-hover:bg-indigo-600/20 text-slate-400 group-hover:text-indigo-400 flex items-center justify-center transition">
-              <i class="fa-solid fa-upload"></i>
-            </div>
-            <div>
-              <p class="text-xs text-slate-200 font-medium">點擊選擇檔案 或 拖曳檔案至此</p>
-              <p class="text-[10px] text-slate-500 mt-0.5">支援 MP4, WebM, OGG, MOV 等格式</p>
-            </div>
-            <input type="file" id="fileInput" accept="video/*" class="hidden">
-          </div>
+      <!-- 操作面板 -->
+      <div class="flex items-center gap-4 bg-zinc-900/80 backdrop-blur-md border border-white/10 px-4 py-2 rounded-full shadow-2xl">
+        <!-- 播放 / 暫停 -->
+        <button id="play-btn" class="text-indigo-400 hover:text-indigo-300 text-lg transition active:scale-90 w-8 h-8 flex items-center justify-center" title="播放 / 暫停">
+          <i id="play-icon" class="fa-solid fa-pause"></i>
+        </button>
+
+        <div class="h-4 w-px bg-white/20"></div>
+
+        <!-- 播放速度/間隔設定 -->
+        <div class="flex items-center gap-2 text-xs text-zinc-300">
+          <i class="fa-solid fa-gauge-high text-indigo-400"></i>
+          <span>播放速度:</span>
+          <select id="interval-select" class="bg-black/60 text-white text-xs border border-white/20 rounded-md px-2.5 py-1 outline-none cursor-pointer focus:border-indigo-500 font-medium">
+            <option value="1000">超快 (1 秒)</option>
+            <option value="1500">快速 (1.5 秒)</option>
+            <option value="2000">較快 (2 秒)</option>
+            <option value="3000" selected>適中 (3 秒)</option>
+            <option value="4000">標準 (4 秒)</option>
+            <option value="5000">慢速 (5 秒)</option>
+            <option value="8000">極慢 (8 秒)</option>
+          </select>
         </div>
 
-        <div class="relative flex py-1 items-center">
-          <div class="flex-grow border-t border-slate-700/60"></div>
-          <span class="flex-shrink mx-3 text-[11px] text-slate-500 uppercase">或</span>
-          <div class="flex-grow border-t border-slate-700/60"></div>
-        </div>
+        <div class="h-4 w-px bg-white/20"></div>
 
-        <!-- 網路網址輸入 -->
-        <div>
-          <label class="block text-xs font-medium text-slate-300 mb-1.5">方式 2: 影片網路網址 (URL)</label>
-          <form id="urlForm" class="space-y-2">
-            <div class="relative">
-              <input type="url" id="urlInput" placeholder="https://example.com/video.mp4" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition pr-8">
-              <button type="button" id="clearUrlBtn" class="absolute right-2.5 top-2 text-slate-500 hover:text-slate-300 text-xs hidden">
-                <i class="fa-solid fa-xmark"></i>
-              </button>
-            </div>
-            <button type="submit" class="w-full py-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white rounded-lg text-xs font-medium transition flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/20">
-              <i class="fa-solid fa-link"></i> 載入網路影片
-            </button>
-          </form>
-        </div>
-
-        <!-- 測試用範例影片 -->
-        <div class="pt-2 border-t border-slate-700/40">
-          <span class="text-[11px] text-slate-400">快速試玩範例:</span>
-          <div class="flex flex-wrap gap-1.5 mt-1.5">
-            <button class="sample-btn text-[11px] px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-md transition" data-url="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4" data-title="Big Blazes Demo">
-              Blazes 短片
-            </button>
-            <button class="sample-btn text-[11px] px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-md transition" data-url="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" data-title="Big Buck Bunny">
-              Big Buck Bunny
-            </button>
-          </div>
-        </div>
-
+        <!-- 顯示比例模式 -->
+        <button id="fit-mode-btn" class="text-xs text-zinc-300 hover:text-white px-2 py-1 rounded transition bg-white/5 hover:bg-white/10" title="切換顯示比例（完整呈現 / 填滿畫面）">
+          完整等比
+        </button>
       </div>
-
-      <!-- 最近播放紀錄 -->
-      <div class="bg-slate-800/40 border border-slate-700/40 rounded-2xl p-5 shadow-sm space-y-3">
-        <div class="flex items-center justify-between">
-          <h2 class="text-sm font-semibold text-white flex items-center gap-2">
-            <i class="fa-solid fa-clock-rotate-left text-indigo-400"></i> 最近播放
-          </h2>
-          <button id="clearHistoryBtn" class="text-[11px] text-slate-500 hover:text-rose-400 transition hidden">清空</button>
-        </div>
-
-        <ul id="historyList" class="space-y-1.5 max-h-48 overflow-y-auto no-scrollbar text-xs">
-          <li class="text-slate-500 text-center py-4 text-[11px]">尚無播放紀錄</li>
-        </ul>
-      </div>
-
     </div>
-
-  </main>
+  </div>
 
   <script>
-    // DOM 元素引用
-    const video = document.getElementById('videoElement');
-    const placeholderView = document.getElementById('placeholderView');
-    const playerContainer = document.getElementById('playerContainer');
-    const dropOverlay = document.getElementById('dropOverlay');
-    const dropZone = document.getElementById('dropZone');
-    const fileInput = document.getElementById('fileInput');
-    const directFileInput = document.getElementById('directFileInput');
-    const urlForm = document.getElementById('urlForm');
-    const urlInput = document.getElementById('urlInput');
-    const clearUrlBtn = document.getElementById('clearUrlBtn');
-    const videoInfoCard = document.getElementById('videoInfoCard');
-    const infoName = document.getElementById('infoName');
-    const infoResolution = document.getElementById('infoResolution');
-    const infoDuration = document.getElementById('infoDuration');
-    const infoSource = document.getElementById('infoSource');
-    const speedButtons = document.querySelectorAll('.speed-btn');
-    const loopBtn = document.getElementById('loopBtn');
-    const loopStatus = document.getElementById('loopStatus');
-    const captureBtn = document.getElementById('captureBtn');
-    const fullscreenBtn = document.getElementById('fullscreenBtn');
-    const fsStatusText = document.getElementById('fsStatusText');
-    const historyList = document.getElementById('historyList');
-    const clearHistoryBtn = document.getElementById('clearHistoryBtn');
-    const sampleButtons = document.querySelectorAll('.sample-btn');
+    // 使用您上傳的活動點名相片
+    let photos = [
+      { url: 'https://inskvcdsblyukxuqeqoz.supabase.co/storage/v1/object/sign/interactive-tools-bucket/user_3JToioDfZjv8bhcMCl8vBy2mapl/5f4004ee-633a-4873-9c5c-6c2785093c71.png?token=eyJraWQiOiI4MTYwZjkwMC1kYTUyLTQ5ZjEtYmYwOC04Y2JkMTgwNjcwMDUiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJpbnRlcmFjdGl2ZS10b29scy1idWNrZXQvdXNlcl8zSlRvaW9EZlpqdjhiaGNNQ2w4dkJ5Mm1hcGwvNWY0MDA0ZWUtNjMzYS00ODczLTljNWMtNmMyNzg1MDkzYzcxLnBuZyIsInNjb3BlIjoiZG93bmxvYWQiLCJpYXQiOjE3OTAwNjE5NjksImV4cCI6MTc5MDA2MjI2OX0.icydehjz_aoFD5brTuiXHJ45ujuvVvVPtS7Qbs2dgis', title: '每日課外活動 (1)' },
+      { url: 'https://inskvcdsblyukxuqeqoz.supabase.co/storage/v1/object/sign/interactive-tools-bucket/user_3JToioDfZjv8bhcMCl8vBy2mapl/9ed36789-8aa7-4591-a5ae-9342b4aa9169.png?token=eyJraWQiOiI4MTYwZjkwMC1kYTUyLTQ5ZjEtYmYwOC04Y2JkMTgwNjcwMDUiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJpbnRlcmFjdGl2ZS10b29scy1idWNrZXQvdXNlcl8zSlRvaW9EZlpqdjhiaGNNQ2w4dkJ5Mm1hcGwvOWVkMzY3ODktOGFhNy00NTkxLWE1YWUtOTM0MmI0YWE5MTY5LnBuZyIsInNjb3BlIjoiZG93bmxvYWQiLCJpYXQiOjE3OTAwNjE5NjksImV4cCI6MTc5MDA2MjI2OX0.SieD8T-cy3id87xzBc2dBR-jejp2SHbJdF_CpBOUWUE', title: '每日課外活動 (2)' },
+      { url: 'https://inskvcdsblyukxuqeqoz.supabase.co/storage/v1/object/sign/interactive-tools-bucket/user_3JToioDfZjv8bhcMCl8vBy2mapl/618c1188-e214-4160-a7ea-68aa13770dd2.png?token=eyJraWQiOiI4MTYwZjkwMC1kYTUyLTQ5ZjEtYmYwOC04Y2JkMTgwNjcwMDUiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJpbnRlcmFjdGl2ZS10b29scy1idWNrZXQvdXNlcl8zSlRvaW9EZlpqdjhiaGNNQ2w4dkJ5Mm1hcGwvNjE4YzExODgtZTIxNC00MTYwLWE3ZWEtNjhhYTEzNzcwZGQyLnBuZyIsInNjb3BlIjoiZG93bmxvYWQiLCJpYXQiOjE3OTAwNjE5NjksImV4cCI6MTc5MDA2MjI2OX0.usZEbQmsxAs7OYMVMrsGXOrNACgiVWq8SxQQISJB1VM', title: '每日課外活動 (3)' }
+    ];
 
-    let currentObjectUrl = null;
-    let recentHistory = [];
+    let currentIndex = 0;
+    let isPlaying = true;
+    let playIntervalMs = 3000;
+    let timer = null;
+    let currentLayer = 'a'; // 'a' 或 'b' 雙緩衝切換
+    let isContainMode = true;
+    let hideControlsTimeout = null;
 
-    // 初始化儲存紀錄載入
-    async function loadHistory() {
-      try {
-        if (window.sayoStorage) {
-          const raw = await window.sayoStorage.getItem('video_history');
-          if (raw) recentHistory = JSON.parse(raw);
-        } else {
-          const raw = localStorage.getItem('video_history');
-          if (raw) recentHistory = JSON.parse(raw);
-        }
-      } catch (e) {
-        recentHistory = [];
-      }
-      renderHistory();
+    // DOM 元素
+    const container = document.getElementById('slideshow-container');
+    const slideA = document.getElementById('slide-a');
+    const slideB = document.getElementById('slide-b');
+    const playBtn = document.getElementById('play-btn');
+    const playIcon = document.getElementById('play-icon');
+    const prevBtn = document.getElementById('prev-btn');
+    const nextBtn = document.getElementById('next-btn');
+    const counter = document.getElementById('counter');
+    const dotsContainer = document.getElementById('dots-container');
+    const fullscreenBtn = document.getElementById('fullscreen-btn');
+    const fsText = document.getElementById('fs-text');
+    const intervalSelect = document.getElementById('interval-select');
+    const fileInput = document.getElementById('file-input');
+    const fitModeBtn = document.getElementById('fit-mode-btn');
+    const topBar = document.getElementById('top-bar');
+    const bottomBar = document.getElementById('bottom-bar');
+    const controlUIs = [topBar, bottomBar, prevBtn, nextBtn];
+
+    // 初始化載入
+    function init() {
+      renderDots();
+      updateDisplay(false);
+      startAutoplay();
     }
 
-    async function saveHistory() {
-      try {
-        const payload = JSON.stringify(recentHistory.slice(0, 10));
-        if (window.sayoStorage) {
-          await window.sayoStorage.setItem('video_history', payload);
-        } else {
-          localStorage.setItem('video_history', payload);
-        }
-      } catch (e) {
-        console.error(e);
-      }
-      renderHistory();
-    }
-
-    function addHistoryItem(title, source, type) {
-      // 移除重複
-      recentHistory = recentHistory.filter(h => h.source !== source);
-      recentHistory.unshift({
-        title,
-        source,
-        type,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      });
-      saveHistory();
-    }
-
-    function renderHistory() {
-      if (recentHistory.length === 0) {
-        historyList.innerHTML = '<li class="text-slate-500 text-center py-3 text-[11px]">尚無播放紀錄</li>';
-        clearHistoryBtn.classList.add('hidden');
-        return;
-      }
-      clearHistoryBtn.classList.remove('hidden');
-      historyList.innerHTML = recentHistory.map((item, idx) => `
-        <li class="group flex items-center justify-between p-2 rounded-lg bg-slate-900/50 hover:bg-indigo-950/40 border border-slate-800 transition cursor-pointer" data-idx="${idx}">
-          <div class="flex items-center gap-2 overflow-hidden flex-1 mr-2">
-            <i class="fa-solid ${item.type === 'file' ? 'fa-file-video text-amber-400' : 'fa-globe text-blue-400'} text-xs flex-shrink-0"></i>
-            <span class="truncate text-slate-300 font-medium text-[11px] group-hover:text-indigo-200">${item.title}</span>
-          </div>
-          <span class="text-[10px] text-slate-500 flex-shrink-0">${item.timestamp}</span>
-        </li>
-      `).join('');
-
-      historyList.querySelectorAll('li[data-idx]').forEach(el => {
-        el.addEventListener('click', () => {
-          const item = recentHistory[el.dataset.idx];
-          if (item.type === 'url') {
-            loadVideoUrl(item.source, item.title);
-          } else {
-            alert('本地檔案基於瀏覽器安全政策無法直接重新讀取，請再次從本機選擇或拖放該檔案。');
-          }
+    // 渲染導航指示小圓點
+    function renderDots() {
+      dotsContainer.innerHTML = '';
+      photos.forEach((_, idx) => {
+        const dot = document.createElement('button');
+        dot.className = `h-2 rounded-full transition-all duration-300 ${
+          idx === currentIndex ? 'w-6 bg-indigo-500' : 'w-2 bg-white/40 hover:bg-white/70'
+        }`;
+        dot.addEventListener('click', (e) => {
+          e.stopPropagation();
+          goToIndex(idx);
         });
+        dotsContainer.appendChild(dot);
       });
+      counter.textContent = `${currentIndex + 1} / ${photos.length}`;
     }
 
-    clearHistoryBtn.addEventListener('click', () => {
-      recentHistory = [];
-      saveHistory();
-    });
-
-    // 格式化時間
-    function formatTime(seconds) {
-      if (isNaN(seconds) || seconds === Infinity) return '--:--';
-      const m = Math.floor(seconds / 60);
-      const s = Math.floor(seconds % 60);
-      return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    // 切換至指定照片
+    function goToIndex(nextIndex) {
+      if (photos.length === 0) return;
+      currentIndex = (nextIndex + photos.length) % photos.length;
+      updateDisplay(true);
+      resetAutoplay();
     }
 
-    // 載入本地檔案
-    function handleFileSelect(file) {
-      if (!file || !file.type.startsWith('video/')) {
-        alert('請選擇有效的影片格式檔案 (例如 MP4, WebM, OGG)');
-        return;
-      }
+    // 更新畫面影像（平滑過渡）
+    function updateDisplay(animated = true) {
+      if (photos.length === 0) return;
+      const targetPhoto = photos[currentIndex];
+      const targetFitClass = isContainMode ? 'bg-contain' : 'bg-cover';
 
-      if (currentObjectUrl) {
-        URL.revokeObjectURL(currentObjectUrl);
-      }
-
-      currentObjectUrl = URL.createObjectURL(file);
-      video.src = currentObjectUrl;
-      video.load();
-
-      placeholderView.classList.add('hidden');
-      video.classList.remove('hidden');
-      videoInfoCard.classList.remove('hidden');
-
-      infoName.textContent = file.name;
-      infoName.title = file.name;
-      infoSource.textContent = `本機檔案 (${(file.size / (1024 * 1024)).toFixed(1)} MB)`;
-      
-      addHistoryItem(file.name, file.name, 'file');
-      video.play().catch(() => {});
-    }
-
-    // 載入網路影片 URL
-    function loadVideoUrl(url, customTitle) {
-      if (!url) return;
-      if (currentObjectUrl) {
-        URL.revokeObjectURL(currentObjectUrl);
-        currentObjectUrl = null;
-      }
-
-      video.src = url;
-      video.load();
-
-      placeholderView.classList.add('hidden');
-      video.classList.remove('hidden');
-      videoInfoCard.classList.remove('hidden');
-
-      const title = customTitle || url.split('/').pop().split('#')[0].split('?')[0] || '網路影片串流';
-      infoName.textContent = title;
-      infoName.title = url;
-      infoSource.textContent = '網路網址 (URL)';
-
-      addHistoryItem(title, url, 'url');
-      video.play().catch(() => {});
-    }
-
-    // 影片元數據載入完成
-    video.addEventListener('loadedmetadata', () => {
-      infoResolution.textContent = `${video.videoWidth} × ${video.videoHeight}`;
-      infoDuration.textContent = formatTime(video.duration);
-    });
-
-    video.addEventListener('error', () => {
-      alert('無法播放該影片。可能是格式不支援、網址無效或存在跨網域 (CORS) 存取限制。');
-    });
-
-    // 拖曳上傳監聽
-    [playerContainer, dropZone].forEach(zone => {
-      zone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        dropOverlay.classList.remove('opacity-0');
-      });
-
-      zone.addEventListener('dragleave', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        dropOverlay.classList.add('opacity-0');
-      });
-
-      zone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        dropOverlay.classList.add('opacity-0');
-        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-          handleFileSelect(e.dataTransfer.files[0]);
-        }
-      });
-    });
-
-    // 本地檔案選擇輸入事件
-    [fileInput, directFileInput].forEach(input => {
-      input.addEventListener('change', (e) => {
-        if (e.target.files && e.target.files.length > 0) {
-          handleFileSelect(e.target.files[0]);
-        }
-      });
-    });
-
-    dropZone.addEventListener('click', () => fileInput.click());
-
-    // 網址表單提交
-    urlForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const url = urlInput.value.trim();
-      if (url) {
-        loadVideoUrl(url);
-      }
-    });
-
-    urlInput.addEventListener('input', () => {
-      if (urlInput.value) {
-        clearUrlBtn.classList.remove('hidden');
+      if (currentLayer === 'a') {
+        // 由 A 切換到 B
+        slideB.style.backgroundImage = `url("${targetPhoto.url}")`;
+        slideB.className = `absolute inset-0 ${targetFitClass} bg-center bg-no-repeat transition-opacity duration-700 opacity-100`;
+        slideA.className = `absolute inset-0 ${targetFitClass} bg-center bg-no-repeat transition-opacity duration-700 opacity-0`;
+        currentLayer = 'b';
       } else {
-        clearUrlBtn.classList.add('hidden');
+        // 由 B 切換到 A
+        slideA.style.backgroundImage = `url("${targetPhoto.url}")`;
+        slideA.className = `absolute inset-0 ${targetFitClass} bg-center bg-no-repeat transition-opacity duration-700 opacity-100`;
+        slideB.className = `absolute inset-0 ${targetFitClass} bg-center bg-no-repeat transition-opacity duration-700 opacity-0`;
+        currentLayer = 'a';
       }
-    });
 
-    clearUrlBtn.addEventListener('click', () => {
-      urlInput.value = '';
-      clearUrlBtn.classList.add('hidden');
-      urlInput.focus();
-    });
+      renderDots();
+    }
 
-    // 範例影片快速按鈕
-    sampleButtons.forEach(btn => {
-      btn.addEventListener('click', () => {
-        loadVideoUrl(btn.dataset.url, btn.dataset.title);
-      });
-    });
+    // 自動播放計時
+    function startAutoplay() {
+      if (timer) clearInterval(timer);
+      if (!isPlaying) return;
+      timer = setInterval(() => {
+        goToIndex(currentIndex + 1);
+      }, playIntervalMs);
+    }
 
-    // 倍速調整
-    speedButtons.forEach(btn => {
-      btn.addEventListener('click', () => {
-        const speed = parseFloat(btn.dataset.speed);
-        video.playbackRate = speed;
-        speedButtons.forEach(b => {
-          b.className = 'speed-btn px-2.5 py-1 rounded text-slate-400 hover:text-white transition';
-        });
-        btn.className = 'speed-btn px-2.5 py-1 rounded bg-indigo-600 text-white font-medium shadow-sm';
-      });
-    });
+    function stopAutoplay() {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    }
 
-    // 循環播放開關
-    loopBtn.addEventListener('click', () => {
-      video.loop = !video.loop;
-      if (video.loop) {
-        loopBtn.classList.add('text-indigo-400', 'border-indigo-500/60');
-        loopStatus.textContent = '循環播放中';
+    function resetAutoplay() {
+      if (isPlaying) {
+        startAutoplay();
+      }
+    }
+
+    // 播放 / 暫停按鈕
+    playBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      isPlaying = !isPlaying;
+      if (isPlaying) {
+        playIcon.className = 'fa-solid fa-pause';
+        startAutoplay();
       } else {
-        loopBtn.classList.remove('text-indigo-400', 'border-indigo-500/60');
-        loopStatus.textContent = '單次播放';
+        playIcon.className = 'fa-solid fa-play';
+        stopAutoplay();
       }
     });
 
-    // 截圖功能
-    captureBtn.addEventListener('click', () => {
-      if (!video.videoWidth || !video.videoHeight) {
-        alert('請先載入並播放影片才能進行畫面截圖！');
-        return;
-      }
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        
-        const link = document.createElement('a');
-        link.download = `screenshot_${formatTime(video.currentTime).replace(':', '-')}.png`;
-        link.href = canvas.toDataURL('image/png');
-        link.click();
-      } catch (err) {
-        alert('截圖失敗：此影片可能具有跨網域安全性保護 (CORS)。本機匯入的影片皆可正常截圖。');
+    prevBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      goToIndex(currentIndex - 1);
+    });
+
+    nextBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      goToIndex(currentIndex + 1);
+    });
+
+    // 點擊畫面左右半部也能換頁
+    container.addEventListener('click', (e) => {
+      if (e.target.closest('button') || e.target.closest('select') || e.target.closest('label')) return;
+      const rect = container.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      if (clickX < rect.width / 3) {
+        goToIndex(currentIndex - 1);
+      } else if (clickX > (rect.width * 2) / 3) {
+        goToIndex(currentIndex + 1);
+      } else {
+        playBtn.click();
       }
     });
 
-    // 全螢幕切換功能 (雙軌支援：原生全螢幕 + 視窗滿版劇院全螢幕，徹底解決 iframe 權限限制)
-    let isWebFullscreen = false;
+    // 播放間隔變更
+    intervalSelect.addEventListener('change', (e) => {
+      playIntervalMs = parseInt(e.target.value, 10);
+      resetAutoplay();
+    });
 
-    function updateFsUI(isFs) {
-      fsStatusText.textContent = isFs ? '退出全螢幕' : '全螢幕';
-      const icon = fullscreenBtn.querySelector('i');
-      if (icon) {
-        icon.className = isFs ? 'fa-solid fa-compress' : 'fa-solid fa-expand';
-      }
-    }
+    // 畫面顯示模式切換（完整適配 vs 填滿畫面）
+    fitModeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      isContainMode = !isContainMode;
+      fitModeBtn.textContent = isContainMode ? '完整等比' : '填滿畫面';
+      const targetFitClass = isContainMode ? 'bg-contain' : 'bg-cover';
+      slideA.className = `absolute inset-0 ${targetFitClass} bg-center bg-no-repeat transition-all ${slideA.classList.contains('opacity-100') ? 'opacity-100' : 'opacity-0'}`;
+      slideB.className = `absolute inset-0 ${targetFitClass} bg-center bg-no-repeat transition-all ${slideB.classList.contains('opacity-100') ? 'opacity-100' : 'opacity-0'}`;
+    });
 
-    function enterWebFullscreen() {
-      isWebFullscreen = true;
-      playerContainer.classList.add('web-fullscreen');
-      updateFsUI(true);
-    }
+    // 全螢幕切換（完整支援主流與行動裝置瀏覽器）
+    function toggleFullScreen() {
+      const el = container;
+      const isFs = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement;
 
-    function exitWebFullscreen() {
-      isWebFullscreen = false;
-      playerContainer.classList.remove('web-fullscreen');
-      updateFsUI(false);
-    }
-
-    async function toggleFullscreen() {
-      const isCurrentlyFs = !!(document.fullscreenElement || document.webkitFullscreenElement || isWebFullscreen);
-      
-      if (isCurrentlyFs) {
-        // 退出全螢幕
+      if (!isFs) {
+        if (el.requestFullscreen) {
+          el.requestFullscreen().catch(err => console.warn("全螢幕請求受阻:", err));
+        } else if (el.webkitRequestFullscreen) {
+          el.webkitRequestFullscreen();
+        } else if (el.msRequestFullscreen) {
+          el.msRequestFullscreen();
+        } else if (el.mozRequestFullScreen) {
+          el.mozRequestFullScreen();
+        }
+      } else {
         if (document.exitFullscreen) {
-          try { await document.exitFullscreen(); } catch (e) {}
+          document.exitFullscreen();
         } else if (document.webkitExitFullscreen) {
-          try { document.webkitExitFullscreen(); } catch (e) {}
+          document.webkitExitFullscreen();
+        } else if (document.msExitFullscreen) {
+          document.msExitFullscreen();
+        } else if (document.mozCancelFullScreen) {
+          document.mozCancelFullScreen();
         }
-        exitWebFullscreen();
-      } else {
-        // 嘗試進入原生全螢幕；若環境阻擋則自動降級為滿版視窗全螢幕
-        let enteredNative = false;
-        const target = playerContainer;
-
-        try {
-          if (target.requestFullscreen) {
-            await target.requestFullscreen();
-            enteredNative = true;
-          } else if (video.webkitEnterFullscreen) {
-            video.webkitEnterFullscreen();
-            enteredNative = true;
-          } else if (target.webkitRequestFullscreen) {
-            target.webkitRequestFullscreen();
-            enteredNative = true;
-          }
-        } catch (err) {
-          console.log('瀏覽器政策阻擋原生全螢幕，已自動切換至滿版視窗全螢幕:', err);
-        }
-
-        // 即使原生觸發，也啟用滿版樣式確保畫面完全填滿
-        enterWebFullscreen();
       }
     }
 
-    fullscreenBtn.addEventListener('click', toggleFullscreen);
+    fullscreenBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleFullScreen();
+    });
 
-    // 雙擊畫面切換全螢幕
-    playerContainer.addEventListener('dblclick', (e) => {
-      if (e.target !== directFileInput && !video.classList.contains('hidden')) {
-        toggleFullscreen();
+    function handleFullscreenChange() {
+      const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
+      if (isFs) {
+        fsIcon.className = 'fa-solid fa-compress';
+        if (fsText) fsText.textContent = '退出全螢幕';
+        fullscreenBtn.title = '退出全螢幕 (快捷鍵: Esc / F)';
+      } else {
+        fsIcon.className = 'fa-solid fa-expand';
+        if (fsText) fsText.textContent = '全螢幕播放';
+        fullscreenBtn.title = '切換全螢幕 (快捷鍵: F)';
+        showControls();
+      }
+    }
+
+    ['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange'].forEach(evt => {
+      document.addEventListener(evt, handleFullscreenChange);
+    });
+
+    // 全螢幕時自動隱藏操作工具列（3 秒無動作淡出，滑鼠移動立即浮現）
+    function showControls() {
+      controlUIs.forEach(el => el.classList.remove('hide-controls'));
+      container.style.cursor = 'default';
+      clearTimeout(hideControlsTimeout);
+      if (document.fullscreenElement && isPlaying) {
+        hideControlsTimeout = setTimeout(() => {
+          controlUIs.forEach(el => el.classList.add('hide-controls'));
+          container.style.cursor = 'none';
+        }, 3000);
+      }
+    }
+
+    container.addEventListener('mousemove', showControls);
+    container.addEventListener('touchstart', showControls);
+
+    // 本地照片上傳預覽
+    fileInput.addEventListener('change', (e) => {
+      const files = Array.from(e.target.files);
+      if (files.length > 0) {
+        const newPhotos = files.map(file => ({
+          url: URL.createObjectURL(file),
+          title: file.name
+        }));
+        photos = [...photos, ...newPhotos];
+        currentIndex = photos.length - newPhotos.length;
+        updateDisplay(true);
+        resetAutoplay();
       }
     });
 
-    document.addEventListener('fullscreenchange', () => {
-      const isNativeFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
-      if (!isNativeFs && !isWebFullscreen) {
-        updateFsUI(false);
-      }
-    });
-
-    // 鍵盤快速鍵支援
+    // 鍵盤快捷鍵：空白鍵暫停/播放、左右方向鍵換張、F 鍵全螢幕
     window.addEventListener('keydown', (e) => {
-      if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
-
       if (e.code === 'Space') {
         e.preventDefault();
-        if (video.paused) video.play(); else video.pause();
-      } else if (e.code === 'KeyF') {
-        e.preventDefault();
-        toggleFullscreen();
-      } else if (e.code === 'Escape') {
-        if (isWebFullscreen) {
-          exitWebFullscreen();
-        }
-      } else if (e.code === 'ArrowRight') {
-        e.preventDefault();
-        video.currentTime = Math.min(video.duration || 0, video.currentTime + 5);
+        playBtn.click();
       } else if (e.code === 'ArrowLeft') {
-        e.preventDefault();
-        video.currentTime = Math.max(0, video.currentTime - 5);
+        goToIndex(currentIndex - 1);
+      } else if (e.code === 'ArrowRight') {
+        goToIndex(currentIndex + 1);
+      } else if (e.code === 'KeyF') {
+        toggleFullScreen();
       }
     });
 
-    // 匯出獨立 HTML 網頁檔
-    const exportHtmlBtn = document.getElementById('exportHtmlBtn');
-    exportHtmlBtn.addEventListener('click', () => {
-      const docClone = document.documentElement.cloneNode(true);
-      // 清除臨時的 object URL 避免匯出檔案中殘留死連結
-      const vid = docClone.querySelector('#videoElement');
-      if (vid) { vid.removeAttribute('src'); vid.classList.add('hidden'); }
-      const placeholder = docClone.querySelector('#placeholderView');
-      if (placeholder) { placeholder.classList.remove('hidden'); }
-      
-      const fullHtml = '<!DOCTYPE html>\n' + docClone.outerHTML;
-      const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'index.html';
-      a.click();
-      URL.revokeObjectURL(a.href);
-    });
-
-    // 啟動載入歷史紀錄
-    loadHistory();
+    // 啟動
+    init();
   </script>
 </body>
 </html>
