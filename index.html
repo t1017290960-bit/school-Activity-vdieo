@@ -183,56 +183,118 @@
 
         <!-- 區間設定核心 -->
         <div class="bg-slate-900/70 p-4 rounded-xl border border-slate-800 space-y-3 text-xs">
-          <!-- 時間軸可視進度與滑動軌道 -->
-          <div class="space-y-1.5">
+          <!-- 時間軸可視進度與自由雙向拖曳滑動軌道 -->
+          <div class="space-y-2">
             <div class="flex justify-between text-[11px] text-slate-400">
-              <span>起點 (Mark In)</span>
-              <span id="currentTimeDisplay" class="text-indigo-400 font-mono">00:00 / 00:00</span>
-              <span>終點 (Mark Out)</span>
+              <span class="flex items-center gap-1"><i class="fa-solid fa-arrow-right-to-bracket text-indigo-400"></i> 起點把手 (拖動)</span>
+              <span id="currentTimeDisplay" class="text-indigo-400 font-mono font-semibold">00:00 / 00:00</span>
+              <span class="flex items-center gap-1">終點把手 (拖動) <i class="fa-solid fa-arrow-right-from-bracket text-indigo-400"></i></span>
             </div>
 
-            <!-- 自製視覺化範圍進度條 -->
-            <div class="relative w-full h-4 bg-slate-800 rounded-lg overflow-hidden flex items-center cursor-pointer" id="trimTrackBar">
-              <div id="trimSelectedRange" class="absolute h-full bg-indigo-600/50 border-x-2 border-indigo-400" style="left: 0%; width: 100%;"></div>
-              <div id="trimCurrentIndicator" class="absolute h-full w-1 bg-white shadow-md transition-all" style="left: 0%;"></div>
+            <!-- 自由拖曳時間軸容器 -->
+            <div class="relative w-full h-8 bg-slate-950 rounded-xl border border-slate-800 flex items-center px-2 select-none" id="trimTrackBar">
+              <!-- 底層軌道線 -->
+              <div class="w-full h-2 bg-slate-800/80 rounded-full relative">
+                <!-- 選取反白範圍 (支援按住中間整段平移) -->
+                <div id="trimSelectedRange" class="absolute h-full bg-indigo-600/60 rounded-full cursor-grab active:cursor-grabbing border-y border-indigo-400/50 flex items-center justify-center group" style="left: 0%; width: 100%;" title="按住中間可整段平移剪輯區間">
+                  <div class="w-4 h-1 bg-white/40 rounded-full opacity-60 group-hover:opacity-100"></div>
+                </div>
+
+                <!-- 播放指針 -->
+                <div id="trimCurrentIndicator" class="absolute top-1/2 -translate-y-1/2 w-1 h-5 bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)] rounded-full z-10 pointer-events-none transition-all" style="left: 0%;"></div>
+
+                <!-- 起點拖動把手 (左) -->
+                <div id="trimHandleStart" class="absolute top-1/2 -translate-y-1/2 -ml-2.5 w-5 h-7 bg-indigo-500 hover:bg-indigo-400 active:bg-indigo-300 border-2 border-white rounded-md shadow-lg cursor-ew-resize z-20 flex items-center justify-center transition-transform active:scale-110" style="left: 0%;" title="拖動調整剪輯起點">
+                  <div class="flex flex-col gap-0.5">
+                    <span class="w-0.5 h-3 bg-white/80 rounded-full"></span>
+                  </div>
+                </div>
+
+                <!-- 終點拖動把手 (右) -->
+                <div id="trimHandleEnd" class="absolute top-1/2 -translate-y-1/2 -ml-2.5 w-5 h-7 bg-indigo-500 hover:bg-indigo-400 active:bg-indigo-300 border-2 border-white rounded-md shadow-lg cursor-ew-resize z-20 flex items-center justify-center transition-transform active:scale-110" style="left: 100%;" title="拖動調整剪輯終點">
+                  <div class="flex flex-col gap-0.5">
+                    <span class="w-0.5 h-3 bg-white/80 rounded-full"></span>
+                  </div>
+                </div>
+              </div>
             </div>
+            <p class="text-[10px] text-slate-500 text-center">💡 提示：按住左右把手可自由拖動起訖時間；按住中間彩色區間可整段左右平移。</p>
           </div>
 
-          <!-- 精確時間調整輸入群 -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-            
-            <!-- 起始時間 [A] -->
-            <div class="bg-slate-950 p-2.5 rounded-lg border border-slate-800 flex items-center justify-between gap-2">
-              <div>
-                <span class="text-[10px] text-slate-400 block">剪輯起點 (A)</span>
-                <span id="trimStartDisplay" class="font-mono text-sm font-bold text-indigo-300">00:00.0</span>
-              </div>
-              <div class="flex items-center gap-1">
-                <button id="setStartBtn" class="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-[11px] transition" title="以目前播放位置為起點">
-                  設為起點
-                </button>
-                <button id="jumpStartBtn" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] transition" title="跳至起點">
-                  <i class="fa-solid fa-backward-step"></i>
-                </button>
+          <!-- 精確時間調整輸入群 (支援直接鍵入秒數與自訂微調步進) -->
+          <div class="space-y-2 pt-1">
+            <div class="flex items-center justify-between text-[11px] text-slate-400 px-1">
+              <span>手動精確輸入秒數或點擊步進調整：</span>
+              <div class="flex items-center gap-1.5 bg-slate-950 px-2 py-0.5 rounded-lg border border-slate-800">
+                <span class="text-slate-400">步進間隔:</span>
+                <select id="customStepValSelect" class="bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-indigo-300 font-mono text-[11px] focus:outline-none focus:border-indigo-500">
+                  <option value="0.05">±0.05 秒</option>
+                  <option value="0.1" selected>±0.1 秒 (標準)</option>
+                  <option value="0.5">±0.5 秒</option>
+                  <option value="1.0">±1.0 秒</option>
+                  <option value="2.0">±2.0 秒</option>
+                  <option value="5.0">±5.0 秒 (粗調)</option>
+                </select>
               </div>
             </div>
 
-            <!-- 結束時間 [B] -->
-            <div class="bg-slate-950 p-2.5 rounded-lg border border-slate-800 flex items-center justify-between gap-2">
-              <div>
-                <span class="text-[10px] text-slate-400 block">剪輯終點 (B)</span>
-                <span id="trimEndDisplay" class="font-mono text-sm font-bold text-indigo-300">00:00.0</span>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <!-- 起始時間 [A] -->
+              <div class="bg-slate-950 p-2.5 rounded-lg border border-slate-800 flex items-center justify-between gap-2 flex-wrap">
+                <div class="flex items-center gap-2">
+                  <div>
+                    <span class="text-[10px] text-slate-400 block">剪輯起點 (A)</span>
+                    <span id="trimStartDisplay" class="font-mono text-xs text-indigo-300">00:00.0</span>
+                  </div>
+                  <div class="flex items-center gap-1 bg-slate-900 px-1.5 py-1 rounded border border-slate-700">
+                    <input type="number" id="trimStartInput" step="0.1" min="0" class="w-16 bg-transparent font-mono text-xs font-bold text-white text-center focus:outline-none" title="直接輸入起點秒數">
+                    <span class="text-[10px] text-slate-400">秒</span>
+                  </div>
+                </div>
+                <div class="flex items-center gap-1">
+                  <button id="startStepMinusBtn" class="px-1.5 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-indigo-300 hover:text-white rounded text-[11px] font-mono transition" title="提前時間">
+                    <span class="step-btn-label">-0.1s</span>
+                  </button>
+                  <button id="startStepPlusBtn" class="px-1.5 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-indigo-300 hover:text-white rounded text-[11px] font-mono transition" title="延後時間">
+                    <span class="step-btn-label">+0.1s</span>
+                  </button>
+                  <button id="setStartBtn" class="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-[11px] font-medium transition" title="以目前播放位置為起點">
+                    設為起點
+                  </button>
+                  <button id="jumpStartBtn" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] transition" title="跳至起點">
+                    <i class="fa-solid fa-backward-step"></i>
+                  </button>
+                </div>
               </div>
-              <div class="flex items-center gap-1">
-                <button id="setEndBtn" class="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-[11px] transition" title="以目前播放位置為終點">
-                  設為終點
-                </button>
-                <button id="jumpEndBtn" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] transition" title="跳至終點">
-                  <i class="fa-solid fa-forward-step"></i>
-                </button>
+
+              <!-- 結束時間 [B] -->
+              <div class="bg-slate-950 p-2.5 rounded-lg border border-slate-800 flex items-center justify-between gap-2 flex-wrap">
+                <div class="flex items-center gap-2">
+                  <div>
+                    <span class="text-[10px] text-slate-400 block">剪輯終點 (B)</span>
+                    <span id="trimEndDisplay" class="font-mono text-xs text-indigo-300">00:00.0</span>
+                  </div>
+                  <div class="flex items-center gap-1 bg-slate-900 px-1.5 py-1 rounded border border-slate-700">
+                    <input type="number" id="trimEndInput" step="0.1" min="0" class="w-16 bg-transparent font-mono text-xs font-bold text-white text-center focus:outline-none" title="直接輸入終點秒數">
+                    <span class="text-[10px] text-slate-400">秒</span>
+                  </div>
+                </div>
+                <div class="flex items-center gap-1">
+                  <button id="endStepMinusBtn" class="px-1.5 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-indigo-300 hover:text-white rounded text-[11px] font-mono transition" title="提前時間">
+                    <span class="step-btn-label">-0.1s</span>
+                  </button>
+                  <button id="endStepPlusBtn" class="px-1.5 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-indigo-300 hover:text-white rounded text-[11px] font-mono transition" title="延後時間">
+                    <span class="step-btn-label">+0.1s</span>
+                  </button>
+                  <button id="setEndBtn" class="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-[11px] font-medium transition" title="以目前播放位置為終點">
+                    設為終點
+                  </button>
+                  <button id="jumpEndBtn" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] transition" title="跳至終點">
+                    <i class="fa-solid fa-forward-step"></i>
+                  </button>
+                </div>
               </div>
             </div>
-
           </div>
 
           <!-- 剪輯操作按鈕條 -->
@@ -692,9 +754,18 @@
     const currentTimeDisplay = document.getElementById('currentTimeDisplay');
     const trimTrackBar = document.getElementById('trimTrackBar');
     const trimSelectedRange = document.getElementById('trimSelectedRange');
+    const trimHandleStart = document.getElementById('trimHandleStart');
+    const trimHandleEnd = document.getElementById('trimHandleEnd');
     const trimCurrentIndicator = document.getElementById('trimCurrentIndicator');
     const trimStartDisplay = document.getElementById('trimStartDisplay');
     const trimEndDisplay = document.getElementById('trimEndDisplay');
+    const trimStartInput = document.getElementById('trimStartInput');
+    const trimEndInput = document.getElementById('trimEndInput');
+    const customStepValSelect = document.getElementById('customStepValSelect');
+    const startStepMinusBtn = document.getElementById('startStepMinusBtn');
+    const startStepPlusBtn = document.getElementById('startStepPlusBtn');
+    const endStepMinusBtn = document.getElementById('endStepMinusBtn');
+    const endStepPlusBtn = document.getElementById('endStepPlusBtn');
     const setStartBtn = document.getElementById('setStartBtn');
     const setEndBtn = document.getElementById('setEndBtn');
     const jumpStartBtn = document.getElementById('jumpStartBtn');
@@ -1876,18 +1947,229 @@
       trimStartDisplay.textContent = formatTime(trimStart, true);
       trimEndDisplay.textContent = formatTime(trimEnd, true);
 
-      const leftPercent = Math.max(0, (trimStart / dur) * 100);
-      const rightPercent = Math.min(100, (trimEnd / dur) * 100);
+      // 同步數值輸入框 (避免使用者打字時被覆蓋)
+      if (document.activeElement !== trimStartInput) {
+        trimStartInput.value = trimStart.toFixed(1);
+      }
+      if (document.activeElement !== trimEndInput) {
+        trimEndInput.value = trimEnd.toFixed(1);
+      }
+
+      const leftPercent = Math.max(0, Math.min(100, (trimStart / dur) * 100));
+      const rightPercent = Math.max(0, Math.min(100, (trimEnd / dur) * 100));
       const widthPercent = Math.max(0, rightPercent - leftPercent);
 
       trimSelectedRange.style.left = `${leftPercent}%`;
       trimSelectedRange.style.width = `${widthPercent}%`;
+      trimHandleStart.style.left = `${leftPercent}%`;
+      trimHandleEnd.style.left = `${rightPercent}%`;
 
       const diff = Math.max(0, trimEnd - trimStart);
       trimDurationInfo.textContent = `剪接時長：${diff.toFixed(1)} 秒`;
     }
 
-    // 剪輯起點 / 終點按鈕
+    // ==========================================
+    // 自由拖動時間軸長度與區間核心 (滑鼠 + 觸控多重支援)
+    // ==========================================
+    let dragMode = null; // 'start', 'end', 'range', null
+    let dragStartX = 0;
+    let initialStart = 0;
+    let initialEnd = 0;
+
+    function getTrackRatio(clientX) {
+      const rect = trimTrackBar.getBoundingClientRect();
+      const x = Math.max(0, Math.min(rect.width, clientX - rect.left));
+      return x / rect.width;
+    }
+
+    // 起點把手拖動
+    trimHandleStart.addEventListener('mousedown', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (!video.duration) return;
+      dragMode = 'start';
+      document.body.classList.add('cursor-ew-resize');
+    });
+
+    trimHandleStart.addEventListener('touchstart', (e) => {
+      e.stopPropagation();
+      if (!video.duration) return;
+      dragMode = 'start';
+    }, { passive: true });
+
+    // 終點把手拖動
+    trimHandleEnd.addEventListener('mousedown', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (!video.duration) return;
+      dragMode = 'end';
+      document.body.classList.add('cursor-ew-resize');
+    });
+
+    trimHandleEnd.addEventListener('touchstart', (e) => {
+      e.stopPropagation();
+      if (!video.duration) return;
+      dragMode = 'end';
+    }, { passive: true });
+
+    // 中間選取範圍按住整段平移
+    trimSelectedRange.addEventListener('mousedown', (e) => {
+      if (e.target === trimHandleStart || e.target === trimHandleEnd) return;
+      e.stopPropagation();
+      e.preventDefault();
+      if (!video.duration) return;
+      dragMode = 'range';
+      dragStartX = e.clientX;
+      initialStart = trimStart;
+      initialEnd = trimEnd;
+      document.body.classList.add('cursor-grabbing');
+    });
+
+    trimSelectedRange.addEventListener('touchstart', (e) => {
+      if (e.target === trimHandleStart || e.target === trimHandleEnd) return;
+      e.stopPropagation();
+      if (!video.duration) return;
+      dragMode = 'range';
+      dragStartX = e.touches[0].clientX;
+      initialStart = trimStart;
+      initialEnd = trimEnd;
+    }, { passive: true });
+
+    // 全局拖曳移動
+    function handleGlobalDragMove(clientX) {
+      if (!dragMode || !video.duration) return;
+      const dur = video.duration;
+      const minGap = 0.2; // 最小保留長度 0.2 秒
+
+      if (dragMode === 'start') {
+        const ratio = getTrackRatio(clientX);
+        const targetTime = Math.max(0, Math.min(trimEnd - minGap, ratio * dur));
+        trimStart = targetTime;
+        video.currentTime = trimStart;
+        updateTrimUI();
+      } else if (dragMode === 'end') {
+        const ratio = getTrackRatio(clientX);
+        const targetTime = Math.max(trimStart + minGap, Math.min(dur, ratio * dur));
+        trimEnd = targetTime;
+        video.currentTime = trimEnd;
+        updateTrimUI();
+      } else if (dragMode === 'range') {
+        const rect = trimTrackBar.getBoundingClientRect();
+        const deltaX = clientX - dragStartX;
+        const deltaSec = (deltaX / rect.width) * dur;
+        const rangeLen = initialEnd - initialStart;
+
+        let newStart = initialStart + deltaSec;
+        let newEnd = initialEnd + deltaSec;
+
+        if (newStart < 0) {
+          newStart = 0;
+          newEnd = rangeLen;
+        } else if (newEnd > dur) {
+          newEnd = dur;
+          newStart = dur - rangeLen;
+        }
+
+        trimStart = newStart;
+        trimEnd = newEnd;
+        video.currentTime = trimStart;
+        updateTrimUI();
+      }
+    }
+
+    window.addEventListener('mousemove', (e) => {
+      if (dragMode) {
+        handleGlobalDragMove(e.clientX);
+      }
+    });
+
+    window.addEventListener('touchmove', (e) => {
+      if (dragMode && e.touches[0]) {
+        handleGlobalDragMove(e.touches[0].clientX);
+      }
+    }, { passive: true });
+
+    // 放開滑鼠停止拖動
+    function handleGlobalDragEnd() {
+      if (dragMode) {
+        dragMode = null;
+        document.body.classList.remove('cursor-ew-resize', 'cursor-grabbing');
+      }
+    }
+
+    window.addEventListener('mouseup', handleGlobalDragEnd);
+    window.addEventListener('touchend', handleGlobalDragEnd);
+
+    // 取得自訂微調步進值
+    function getCustomStep() {
+      return parseFloat(customStepValSelect ? customStepValSelect.value : 0.1) || 0.1;
+    }
+
+    // 監聽步進選單切換，更新按鈕文字提示
+    customStepValSelect.addEventListener('change', () => {
+      const val = getCustomStep();
+      const txt = val >= 1 ? `${val.toFixed(0)}s` : `${val}s`;
+      startStepMinusBtn.querySelector('.step-btn-label').textContent = `-${txt}`;
+      startStepPlusBtn.querySelector('.step-btn-label').textContent = `+${txt}`;
+      endStepMinusBtn.querySelector('.step-btn-label').textContent = `-${txt}`;
+      endStepPlusBtn.querySelector('.step-btn-label').textContent = `+${txt}`;
+    });
+
+    // 直接鍵入起點秒數
+    trimStartInput.addEventListener('change', () => {
+      if (!video.duration) return;
+      let val = parseFloat(trimStartInput.value);
+      if (isNaN(val)) val = 0;
+      val = Math.max(0, Math.min(trimEnd - 0.1, val));
+      trimStart = +val.toFixed(2);
+      video.currentTime = trimStart;
+      updateTrimUI();
+    });
+
+    // 直接鍵入終點秒數
+    trimEndInput.addEventListener('change', () => {
+      if (!video.duration) return;
+      let val = parseFloat(trimEndInput.value);
+      if (isNaN(val)) val = video.duration;
+      val = Math.max(trimStart + 0.1, Math.min(video.duration, val));
+      trimEnd = +val.toFixed(2);
+      video.currentTime = trimEnd;
+      updateTrimUI();
+    });
+
+    // 剪輯起點 / 終點按鈕與微調步進
+    startStepMinusBtn.addEventListener('click', () => {
+      if (!video.duration) return;
+      const step = getCustomStep();
+      trimStart = Math.max(0, +(trimStart - step).toFixed(2));
+      video.currentTime = trimStart;
+      updateTrimUI();
+    });
+
+    startStepPlusBtn.addEventListener('click', () => {
+      if (!video.duration) return;
+      const step = getCustomStep();
+      trimStart = Math.min(+(trimEnd - 0.1).toFixed(2), +(trimStart + step).toFixed(2));
+      video.currentTime = trimStart;
+      updateTrimUI();
+    });
+
+    endStepMinusBtn.addEventListener('click', () => {
+      if (!video.duration) return;
+      const step = getCustomStep();
+      trimEnd = Math.max(+(trimStart + 0.1).toFixed(2), +(trimEnd - step).toFixed(2));
+      video.currentTime = trimEnd;
+      updateTrimUI();
+    });
+
+    endStepPlusBtn.addEventListener('click', () => {
+      if (!video.duration) return;
+      const step = getCustomStep();
+      trimEnd = Math.min(+(video.duration).toFixed(2), +(trimEnd + step).toFixed(2));
+      video.currentTime = trimEnd;
+      updateTrimUI();
+    });
+
     setStartBtn.addEventListener('click', () => {
       if (video.currentTime >= trimEnd) {
         alert('起點時間必須小於終點時間！');
