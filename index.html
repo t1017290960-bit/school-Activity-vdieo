@@ -76,15 +76,34 @@
         <!-- 拼接預覽時顯示相片 -->
         <img id="photoOverlay" class="w-full h-full object-contain hidden absolute inset-0 bg-black z-10" alt="相片預覽">
 
-        <!-- 處理進度遮罩 -->
-        <div id="processModal" class="absolute inset-0 bg-slate-950/90 backdrop-blur-sm flex flex-col items-center justify-center gap-3 hidden z-30">
-          <div class="w-9 h-9 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-          <div class="text-center px-4">
-            <p id="processTitle" class="text-sm font-bold text-white">正在處理中...</p>
-            <p id="processDesc" class="text-xs text-indigo-300 mt-1 font-mono">進度：0%</p>
+        <!-- 處理進度遮罩 (含當前處理影格即時預覽) -->
+        <div id="processModal" class="absolute inset-0 bg-slate-950/95 backdrop-blur-md flex flex-col items-center justify-center gap-3 hidden z-30 p-4">
+          <!-- 當前渲染影格即時預覽視窗 -->
+          <div class="relative w-64 max-w-[85%] aspect-video bg-black rounded-xl overflow-hidden border border-slate-700 shadow-2xl flex items-center justify-center">
+            <canvas id="exportLiveCanvas" class="w-full h-full object-contain" width="320" height="180"></canvas>
+            <span class="absolute top-1.5 left-2 bg-rose-600/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 shadow">
+              <span class="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
+              <span>即時渲染中</span>
+            </span>
+            <span id="exportLiveBadge" class="absolute bottom-1.5 right-2 bg-black/80 text-amber-300 text-[10px] font-mono px-1.5 py-0.5 rounded border border-slate-700">
+              -- / --
+            </span>
           </div>
-          <button id="cancelProcessBtn" class="mt-1 px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-lg border border-slate-700 transition">
-            取消
+
+          <div class="text-center px-4 w-full max-w-xs">
+            <p id="processTitle" class="text-sm font-bold text-white">正在處理中...</p>
+            <!-- 即時進度條 -->
+            <div class="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden border border-slate-700">
+              <div id="processProgressBar" class="h-full bg-gradient-to-r from-indigo-500 to-emerald-400 w-0 transition-all duration-100"></div>
+            </div>
+            <div class="flex items-center justify-between mt-1.5 text-xs font-mono">
+              <span id="processDesc" class="text-indigo-300 font-bold">進度：0%</span>
+              <span id="processEtaText" class="text-amber-400 font-medium">預估剩餘：計算中...</span>
+            </div>
+          </div>
+
+          <button id="cancelProcessBtn" class="mt-0.5 px-4 py-1.5 bg-slate-800 hover:bg-rose-900/60 hover:text-rose-200 text-slate-300 text-xs rounded-lg border border-slate-700 transition">
+            取消匯出
           </button>
         </div>
       </div>
@@ -221,7 +240,7 @@
           </div>
         </div>
 
-        <!-- 操作按鈕條 -->
+        <!-- 操作按鈕條 (含單獨匯出解析度選單) -->
         <div class="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-slate-800/80">
           <div class="flex items-center gap-2">
             <button id="playTrimBtn" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium transition flex items-center gap-1.5 border border-slate-700">
@@ -234,10 +253,36 @@
             </button>
           </div>
 
-          <button id="exportSingleTrimBtn" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white rounded-lg text-xs font-semibold shadow-md shadow-indigo-600/30 transition flex items-center gap-1.5">
-            <i class="fa-solid fa-file-export"></i>
-            <span>單獨匯出此片段</span>
-          </button>
+          <div class="flex items-center gap-2 flex-wrap">
+            <div class="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded-lg border border-slate-700/80 text-[11px]">
+              <span class="text-slate-400 shrink-0">檔名:</span>
+              <input type="text" id="singleExportNameInput" value="trimmed_clip" placeholder="自訂檔名" class="bg-transparent text-indigo-300 placeholder-slate-600 w-24 focus:outline-none text-[11px]" title="可自訂匯出的影片檔案名稱">
+            </div>
+
+            <div class="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded-lg border border-slate-700/80 text-[11px]">
+              <span class="text-slate-400 shrink-0">解析度:</span>
+              <select id="singleExportResolutionSelect" class="bg-transparent text-indigo-300 font-medium focus:outline-none cursor-pointer text-[11px]">
+                <option value="1080">1080p 超高清</option>
+                <option value="720" selected>720p 高清</option>
+                <option value="480">480p 標清</option>
+                <option value="360">360p 輕巧</option>
+                <option value="origin">原影片解析度</option>
+              </select>
+            </div>
+
+            <div class="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded-lg border border-slate-700/80 text-[11px]">
+              <span class="text-slate-400 shrink-0">幀率:</span>
+              <select id="singleExportFpsSelect" class="bg-transparent text-indigo-300 font-medium focus:outline-none cursor-pointer text-[11px]">
+                <option value="30" selected>30 fps</option>
+                <option value="60">60 fps (流暢)</option>
+              </select>
+            </div>
+
+            <button id="exportSingleTrimBtn" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white rounded-lg text-xs font-semibold shadow-md shadow-indigo-600/30 transition flex items-center gap-1.5">
+              <i class="fa-solid fa-file-export"></i>
+              <span>單獨匯出此片段</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -274,7 +319,8 @@
     <!-- 右側：影片與相片拼接工作台 (佔 5 欄) -->
     <section class="lg:col-span-5 space-y-4">
       
-      <div class="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-5 space-y-4 flex flex-col h-full min-h-[520px]">
+      <!-- 卡片 1：拼接清單管理 (專注管理片段與排序) -->
+      <div class="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-5 space-y-4">
         <!-- 卡片標題 -->
         <div class="flex items-center justify-between pb-1 border-b border-slate-800">
           <div class="flex items-center gap-2">
@@ -285,11 +331,11 @@
               <h2 class="text-sm font-semibold text-white flex items-center gap-2">
                 <span>影片與相片拼接清單</span>
                 <span id="clipCountBadge" class="text-[10px] bg-slate-800 text-emerald-300 px-1.5 py-0.5 rounded font-normal">0 個片段</span>
-                <span class="text-[10px] text-slate-400 font-normal hidden sm:inline">(支援電腦拖曳 / 手機長按排序)</span>
               </h2>
+              <p class="text-[10px] text-slate-400">支援滑鼠拖曳或手機長按調整順序</p>
             </div>
           </div>
-          <button id="clearAllClipsBtn" class="text-xs text-slate-500 hover:text-rose-400 transition hidden">清空</button>
+          <button id="clearAllClipsBtn" class="text-xs text-slate-500 hover:text-rose-400 transition hidden">清空清單</button>
         </div>
 
         <!-- 匯入按鈕與說明提示 -->
@@ -297,29 +343,43 @@
           <label for="stitchPhotoInput" class="p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800/80 border border-amber-500/30 text-amber-300 flex flex-col items-center justify-center gap-1 cursor-pointer transition text-center">
             <i class="fa-solid fa-images text-base"></i>
             <span class="font-medium">+ 匯入相片</span>
-            <span class="text-[10px] text-slate-400">支援自訂秒數</span>
+            <span class="text-[10px] text-slate-400">可自訂顯示秒數</span>
           </label>
           <label for="directVideoInput" class="p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800/80 border border-indigo-500/30 text-indigo-300 flex flex-col items-center justify-center gap-1 cursor-pointer transition text-center">
             <i class="fa-solid fa-film text-base"></i>
             <span class="font-medium">+ 載入新影片</span>
-            <span class="text-[10px] text-slate-400">剪接後加入</span>
+            <span class="text-[10px] text-slate-400">剪接後加入清單</span>
           </label>
         </div>
 
         <!-- 片段清單容器 -->
-        <div class="flex-1 bg-slate-950/70 rounded-xl border border-slate-800 p-3 overflow-y-auto no-scrollbar max-h-[380px]">
-          <div id="stitchEmptyState" class="h-full flex flex-col items-center justify-center py-12 text-center text-slate-500 text-xs">
+        <div class="bg-slate-950/70 rounded-xl border border-slate-800 p-3 overflow-y-auto no-scrollbar max-h-[320px] min-h-[160px]">
+          <div id="stitchEmptyState" class="h-full flex flex-col items-center justify-center py-8 text-center text-slate-500 text-xs">
             <i class="fa-solid fa-clapperboard text-3xl mb-2 opacity-30"></i>
             <p class="font-medium text-slate-400">目前尚無拼接片段</p>
-            <p class="text-[11px] text-slate-500 mt-1">剪輯影片區間點擊「加入拼接清單」，<br>或直接點擊上方「匯入相片」！</p>
+            <p class="text-[11px] text-slate-500 mt-1">在左側剪接影片後點「加入拼接清單」，<br>或直接點「匯入相片」加入！</p>
           </div>
           <ul id="stitchList" class="space-y-2"></ul>
         </div>
+      </div>
 
-        <!-- 轉場與設定 -->
+      <!-- 卡片 2：拼接匯出與混音控制台 (獨立清晰操作) -->
+      <div class="bg-slate-800/40 border border-emerald-500/30 rounded-2xl p-5 space-y-4 shadow-sm">
+        <div class="flex items-center justify-between pb-1 border-b border-slate-800">
+          <h3 class="text-xs font-semibold text-white flex items-center gap-1.5">
+            <i class="fa-solid fa-sliders text-emerald-400"></i>
+            <span>合成設定與匯出控制</span>
+          </h3>
+          <div class="text-[11px] text-slate-400">
+            <span>總預估時長：</span>
+            <span id="totalStitchDurationText" class="font-mono text-emerald-400 font-bold text-xs">00:00</span>
+          </div>
+        </div>
+
+        <!-- 轉場與背景音樂混音設定 -->
         <div class="bg-slate-900/70 p-3 rounded-xl border border-slate-800 space-y-3 text-xs">
           <div class="flex items-center justify-between">
-            <span class="text-slate-400">片段轉場效果：</span>
+            <span class="text-slate-400">片段過渡轉場：</span>
             <select id="transitionStyleSelect" class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-slate-200 text-xs focus:outline-none">
               <option value="fade_black" selected>黑屏淡入淡出 (平滑)</option>
               <option value="flash_white">白光閃爍 (節奏)</option>
@@ -356,7 +416,7 @@
               </div>
               <div>
                 <div class="flex justify-between text-slate-400 mb-0.5">
-                  <span>BGM 混音音量:</span>
+                  <span>BGM 音量:</span>
                   <span id="bgmVolLabel" class="font-mono text-rose-400 font-bold">60%</span>
                 </div>
                 <input type="range" id="bgmVolSlider" min="0" max="100" value="60" class="w-full accent-rose-500 h-1 bg-slate-950 rounded-lg cursor-pointer">
@@ -364,22 +424,43 @@
             </div>
           </div>
 
-          <div class="flex items-center justify-between text-slate-400 text-[11px] pt-1 border-t border-slate-800/80">
-            <span>預估總合成時長：</span>
-            <span id="totalStitchDurationText" class="font-mono text-emerald-400 font-bold text-xs">00:00</span>
+          <!-- 解析度、FPS與檔名自訂 -->
+          <div class="pt-2 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div class="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded-lg border border-slate-700/80">
+              <span class="text-slate-400 shrink-0 text-[11px]">檔名:</span>
+              <input type="text" id="mergedExportNameInput" value="merged_video" placeholder="自訂檔名" class="bg-transparent text-emerald-300 placeholder-slate-600 w-full focus:outline-none text-[11px]" title="可自訂拼接完成的檔案名稱">
+            </div>
+
+            <div class="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded-lg border border-slate-700/80">
+              <span class="text-slate-400 shrink-0 text-[11px]">解析度:</span>
+              <select id="exportResolutionSelect" class="bg-transparent text-emerald-300 font-medium focus:outline-none cursor-pointer text-[11px] w-full">
+                <option value="1080">1080p 超清</option>
+                <option value="720" selected>720p 高清</option>
+                <option value="480">480p 標清</option>
+                <option value="360">360p 輕巧</option>
+              </select>
+            </div>
+
+            <div class="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded-lg border border-slate-700/80">
+              <span class="text-slate-400 shrink-0 text-[11px]">幀率:</span>
+              <select id="exportFpsSelect" class="bg-transparent text-emerald-300 font-medium focus:outline-none cursor-pointer text-[11px] w-full">
+                <option value="30" selected>30 fps</option>
+                <option value="60">60 fps</option>
+              </select>
+            </div>
           </div>
         </div>
 
-        <!-- 預覽與匯出按鈕 -->
-        <div class="pt-2 flex items-center gap-2">
-          <button id="previewSequenceBtn" class="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-medium transition flex items-center justify-center gap-1.5 border border-slate-700">
+        <!-- 獨立的試播與拼接匯出按鈕列 -->
+        <div class="pt-1 flex flex-wrap sm:flex-nowrap items-center gap-2">
+          <button id="previewSequenceBtn" class="flex-1 py-2.5 px-3 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5 border border-slate-700">
             <i class="fa-solid fa-play text-emerald-400"></i>
-            <span id="previewSeqText">順序試播</span>
+            <span id="previewSeqText">順序試播全片</span>
           </button>
 
-          <button id="exportMergedVideoBtn" class="flex-1 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-95 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-600/30 transition flex items-center justify-center gap-1.5">
-            <i class="fa-solid fa-download"></i>
-            <span>合成匯出全片</span>
+          <button id="exportMergedVideoBtn" class="flex-1 py-2.5 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-95 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-600/30 transition flex items-center justify-center gap-1.5">
+            <i class="fa-solid fa-floppy-disk text-xs"></i>
+            <span>拼接並匯出完整影片</span>
           </button>
         </div>
 
@@ -388,6 +469,48 @@
     </section>
 
   </main>
+
+  <!-- 匯出完成影片預覽彈窗 -->
+  <div id="exportPreviewModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50 hidden select-none">
+    <div class="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl space-y-4 p-5">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-sm border border-emerald-500/30">
+            <i class="fa-solid fa-circle-check"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-white">影片匯出成功！</h3>
+            <p class="text-[11px] text-slate-400">已自動儲存至本機，您可直接在下方預覽播放成果</p>
+          </div>
+        </div>
+        <button id="closePreviewModalBtn" class="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition text-xs">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- 預覽播放器視窗 -->
+      <div class="relative bg-black rounded-xl overflow-hidden border border-slate-800 aspect-video flex items-center justify-center shadow-inner">
+        <video id="previewExportedVideo" class="w-full h-full object-contain" controls autoplay playsinline></video>
+      </div>
+
+      <!-- 檔案資訊與操作條 -->
+      <div class="flex items-center justify-between pt-1 text-xs gap-3">
+        <div class="overflow-hidden flex-1">
+          <p id="previewModalFileName" class="text-slate-200 font-semibold truncate text-[11px]">video.webm</p>
+          <p id="previewModalFileSize" class="text-slate-500 font-mono text-[10px]">大小：約 0 MB</p>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <a id="previewModalDownloadBtn" download="video.webm" href="#" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-lg font-semibold text-xs transition flex items-center gap-1.5 shadow-md shadow-emerald-600/30">
+            <i class="fa-solid fa-download"></i>
+            <span>再次下載</span>
+          </a>
+          <button id="previewModalDoneBtn" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs transition">
+            完成關閉
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script>
     // 核心變數
@@ -444,6 +567,9 @@
     const resetRangeBtn = document.getElementById('resetRangeBtn');
     const playTrimBtn = document.getElementById('playTrimBtn');
     const addRangeToStitchBtn = document.getElementById('addRangeToStitchBtn');
+    const singleExportNameInput = document.getElementById('singleExportNameInput');
+    const singleExportResolutionSelect = document.getElementById('singleExportResolutionSelect');
+    const singleExportFpsSelect = document.getElementById('singleExportFpsSelect');
     const exportSingleTrimBtn = document.getElementById('exportSingleTrimBtn');
 
     // 自由微調步長變數
@@ -481,15 +607,83 @@
     const stitchList = document.getElementById('stitchList');
     const transitionStyleSelect = document.getElementById('transitionStyleSelect');
     const totalStitchDurationText = document.getElementById('totalStitchDurationText');
+    const mergedExportNameInput = document.getElementById('mergedExportNameInput');
+    const exportResolutionSelect = document.getElementById('exportResolutionSelect');
+    const exportFpsSelect = document.getElementById('exportFpsSelect');
     const previewSequenceBtn = document.getElementById('previewSequenceBtn');
     const previewSeqText = document.getElementById('previewSeqText');
     const exportMergedVideoBtn = document.getElementById('exportMergedVideoBtn');
 
-    // 處理進度元素
+    // 匯出解析度配置表
+    const EXPORT_RESOLUTIONS = {
+      '1080': { width: 1920, height: 1080, label: '1080p' },
+      '720': { width: 1280, height: 720, label: '720p' },
+      '480': { width: 854, height: 480, label: '480p' },
+      '360': { width: 640, height: 360, label: '360p' }
+    };
+
+    // 處理進度元素與即時預覽
     const processModal = document.getElementById('processModal');
     const processTitle = document.getElementById('processTitle');
     const processDesc = document.getElementById('processDesc');
+    const processEtaText = document.getElementById('processEtaText');
+    const processProgressBar = document.getElementById('processProgressBar');
+    const exportLiveCanvas = document.getElementById('exportLiveCanvas');
+    const liveCtx = exportLiveCanvas ? exportLiveCanvas.getContext('2d') : null;
+    const exportLiveBadge = document.getElementById('exportLiveBadge');
     const cancelProcessBtn = document.getElementById('cancelProcessBtn');
+
+    // 匯出成果影片預覽彈窗元素
+    const exportPreviewModal = document.getElementById('exportPreviewModal');
+    const previewExportedVideo = document.getElementById('previewExportedVideo');
+    const previewModalFileName = document.getElementById('previewModalFileName');
+    const previewModalFileSize = document.getElementById('previewModalFileSize');
+    const previewModalDownloadBtn = document.getElementById('previewModalDownloadBtn');
+    const closePreviewModalBtn = document.getElementById('closePreviewModalBtn');
+    const previewModalDoneBtn = document.getElementById('previewModalDoneBtn');
+
+    function showExportPreviewModal(blob, filename) {
+      const u = URL.createObjectURL(blob);
+      previewExportedVideo.src = u;
+      previewExportedVideo.load();
+      previewExportedVideo.play().catch(() => {});
+
+      previewModalFileName.textContent = filename;
+      const sizeMb = (blob.size / (1024 * 1024)).toFixed(2);
+      previewModalFileSize.textContent = `檔案大小：約 ${sizeMb} MB (${blob.type || 'video'})`;
+
+      previewModalDownloadBtn.href = u;
+      previewModalDownloadBtn.download = filename;
+
+      exportPreviewModal.classList.remove('hidden');
+    }
+
+    function closeExportPreviewModal() {
+      previewExportedVideo.pause();
+      previewExportedVideo.src = '';
+      exportPreviewModal.classList.add('hidden');
+    }
+
+    closePreviewModalBtn.addEventListener('click', closeExportPreviewModal);
+    previewModalDoneBtn.addEventListener('click', closeExportPreviewModal);
+    exportPreviewModal.addEventListener('click', (e) => {
+      if (e.target === exportPreviewModal) closeExportPreviewModal();
+    });
+
+    // 預估剩餘秒數倒數計算函式
+    function calcEtaString(startTimestamp, progressRatio) {
+      if (!progressRatio || progressRatio < 0.04) return '預估剩餘：計算中...';
+      const elapsedSec = (Date.now() - startTimestamp) / 1000;
+      const totalEstSec = elapsedSec / Math.min(1, progressRatio);
+      const remainSec = Math.max(0, Math.round(totalEstSec - elapsedSec));
+
+      if (remainSec >= 60) {
+        const m = Math.floor(remainSec / 60);
+        const s = remainSec % 60;
+        return `剩餘約 ${m}分${s.toString().padStart(2, '0')}秒`;
+      }
+      return `剩餘約 ${remainSec} 秒`;
+    }
 
     // 狀態存儲
     let currentVideoFile = null;
@@ -560,6 +754,12 @@
         fileOrBlob: file,
         url: currentVideoUrl
       });
+
+      // 自動預填單片段檔名
+      if (file && file.name && singleExportNameInput) {
+        const cleanName = file.name.replace(/\.[^/.]+$/, '').slice(0, 25);
+        singleExportNameInput.value = `${cleanName}_clip`;
+      }
 
       emptyPrompt.classList.add('hidden');
       video.classList.remove('hidden');
@@ -791,7 +991,8 @@
 
       isProcessAborted = false;
       processTitle.textContent = '正在匯出剪輯影片 (含混音)...';
-      processDesc.textContent = '準備錄製中...';
+      processDesc.textContent = '進度：0%';
+      if (processEtaText) processEtaText.textContent = '預估剩餘：計算中...';
       processModal.classList.remove('hidden');
 
       video.pause();
@@ -803,11 +1004,25 @@
         setTimeout(r, 400);
       });
 
+      // 判斷單獨匯出解析度
+      const singleResKey = singleExportResolutionSelect ? singleExportResolutionSelect.value : '720';
+      let targetW = 1280;
+      let targetH = 720;
+
+      if (singleResKey === 'origin') {
+        targetW = video.videoWidth || 1280;
+        targetH = video.videoHeight || 720;
+      } else if (EXPORT_RESOLUTIONS[singleResKey]) {
+        targetW = EXPORT_RESOLUTIONS[singleResKey].width;
+        targetH = EXPORT_RESOLUTIONS[singleResKey].height;
+      }
+
       const cvs = document.createElement('canvas');
-      cvs.width = video.videoWidth || 1280;
-      cvs.height = video.videoHeight || 720;
+      cvs.width = targetW;
+      cvs.height = targetH;
       const ctx = cvs.getContext('2d');
-      const stream = cvs.captureStream(30);
+      const fps = parseInt(singleExportFpsSelect ? singleExportFpsSelect.value : '30', 10) || 30;
+      const stream = cvs.captureStream(fps);
 
       // 單獨片段混音 (原片音效 + BGM 音效)
       let audioCtx = null;
@@ -871,10 +1086,28 @@
           return;
         }
 
-        ctx.drawImage(video, 0, 0, cvs.width, cvs.height);
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, cvs.width, cvs.height);
+
+        const vw = video.videoWidth || cvs.width;
+        const vh = video.videoHeight || cvs.height;
+        const scale = Math.min(cvs.width / vw, cvs.height / vh);
+        const dw = vw * scale;
+        const dh = vh * scale;
+        ctx.drawImage(video, (cvs.width - dw) / 2, (cvs.height - dh) / 2, dw, dh);
+
         const cur = video.currentTime;
-        const pct = Math.min(100, Math.floor(((cur - trimStart) / dur) * 100));
-        processDesc.textContent = `剪輯進度：${pct}% (${Math.max(0, cur - trimStart).toFixed(2)}s / ${dur.toFixed(2)}s)`;
+        const ratio = Math.max(0.001, (cur - trimStart) / dur);
+        const pct = Math.min(100, Math.floor(ratio * 100));
+        processDesc.textContent = `剪輯進度：${pct}% (${Math.max(0, cur - trimStart).toFixed(1)}s / ${dur.toFixed(1)}s)`;
+        if (processEtaText) processEtaText.textContent = calcEtaString(startTime, ratio);
+        if (processProgressBar) processProgressBar.style.width = `${pct}%`;
+
+        // 同步更新當前處理影格即時預覽畫面
+        if (liveCtx) {
+          liveCtx.drawImage(cvs, 0, 0, exportLiveCanvas.width, exportLiveCanvas.height);
+          if (exportLiveBadge) exportLiveBadge.textContent = `${cur.toFixed(1)}s / ${dur.toFixed(1)}s`;
+        }
 
         if (cur >= trimEnd || video.ended || (Date.now() - startTime > (dur + 2) * 1000)) {
           cancelAnimationFrame(animId);
@@ -892,12 +1125,17 @@
 
       if (!isProcessAborted && chunks.length > 0) {
         const blob = new Blob(chunks, { type: mime });
+        const customName = (singleExportNameInput?.value?.trim() || `trimmed_${Date.now()}`).replace(/[\\/:*?"<>|]/g, '_');
+        const filename = `${customName}.${mime.includes('mp4') ? 'mp4' : 'webm'}`;
         const a = document.createElement('a');
-        a.download = `trimmed_${Date.now()}.${mime.includes('mp4') ? 'mp4' : 'webm'}`;
+        a.download = filename;
         a.href = URL.createObjectURL(blob);
         a.click();
         processDesc.textContent = '匯出完成！';
-        setTimeout(() => processModal.classList.add('hidden'), 500);
+        setTimeout(() => {
+          processModal.classList.add('hidden');
+          showExportPreviewModal(blob, filename);
+        }, 400);
       }
     });
 
@@ -1360,7 +1598,7 @@
       if (!isPreviewingSequence) {
         clearTimeout(seqPreviewTimer);
         previewSequenceBtn.classList.remove('bg-emerald-600', 'text-white');
-        previewSeqText.textContent = '順序試播';
+        previewSeqText.textContent = '順序試播全片';
         photoOverlay.classList.add('hidden');
         video.classList.remove('hidden');
         video.pause();
@@ -1389,7 +1627,7 @@
         if (currIdx >= stitchQueue.length) {
           isPreviewingSequence = false;
           previewSequenceBtn.classList.remove('bg-emerald-600', 'text-white');
-          previewSeqText.textContent = '順序試播';
+          previewSeqText.textContent = '順序試播全片';
           photoOverlay.classList.add('hidden');
           video.classList.remove('hidden');
           if (bgmAudio.src) {
@@ -1436,24 +1674,43 @@
       playStep();
     });
 
-    // 一鍵合成匯出全片 (Canvas 渲染串流)
+    // 一鍵合成匯出全片 (Canvas 渲染串流，嚴格順序讀取 stitchQueue 拼接清單)
     exportMergedVideoBtn.addEventListener('click', async () => {
-      if (stitchQueue.length === 0) return alert('拼接清單中尚無片段！');
+      if (stitchQueue.length === 0) return alert('拼接清單中尚無任何片段，請先加入相片或影片！');
 
       isProcessAborted = false;
-      processTitle.textContent = '正在合成匯出完整影片...';
-      processDesc.textContent = '準備渲染各片段...';
+      processTitle.textContent = '正在依清單順序合成匯出完整影片...';
+      processDesc.textContent = '進度：0%';
+      if (processEtaText) processEtaText.textContent = '預估剩餘：計算中...';
       processModal.classList.remove('hidden');
 
       const totalSec = stitchQueue.reduce((acc, c) => acc + (c.type === 'image' ? (c.duration || 3) : (c.end - c.start)), 0);
+      const exportStartTime = Date.now();
+
+      // 套用選定的匯出解析度
+      const resKey = exportResolutionSelect ? exportResolutionSelect.value : '720';
+      const targetRes = EXPORT_RESOLUTIONS[resKey] || { width: 1280, height: 720 };
 
       const cvs = document.createElement('canvas');
-      cvs.width = 1280;
-      cvs.height = 720;
+      cvs.width = targetRes.width;
+      cvs.height = targetRes.height;
       const ctx = cvs.getContext('2d');
-      const stream = cvs.captureStream(30);
+      const fps = parseInt(exportFpsSelect ? exportFpsSelect.value : '30', 10) || 30;
+      const stream = cvs.captureStream(fps);
 
-      // 構建 Web Audio 混音節點
+      // 建立背景影片渲染器並掛載以確保影格解碼與聲音播放
+      const stitchVid = document.createElement('video');
+      stitchVid.style.position = 'fixed';
+      stitchVid.style.top = '-9999px';
+      stitchVid.style.left = '-9999px';
+      stitchVid.style.width = '16px';
+      stitchVid.style.height = '16px';
+      stitchVid.style.opacity = '0.01';
+      stitchVid.muted = false; // 為了抓取聲音
+      stitchVid.playsInline = true;
+      document.body.appendChild(stitchVid);
+
+      // 構建 Web Audio 混音節點 (先建立 stitchVid 再關聯音訊)
       let audioCtx = null;
       let audioDest = null;
       let bgmSourceNode = null;
@@ -1476,7 +1733,7 @@
             bgmGainNode.connect(audioDest);
           }
 
-          // 影片混音軌
+          // 影片音訊混音軌 (與 stitchVid 正確關聯)
           vidSourceNode = audioCtx.createMediaElementSource(stitchVid);
           vidGainNode = audioCtx.createGain();
           vidGainNode.gain.value = (parseFloat(videoVolSlider.value) || 100) / 100;
@@ -1484,7 +1741,7 @@
           vidGainNode.connect(audioDest);
         }
       } catch (err) {
-        console.warn('音訊混音初始化提示:', err);
+        console.warn('音訊混音提示:', err);
       }
 
       // 將混音後的音軌加到輸出串流
@@ -1511,19 +1768,16 @@
       const transDur = 0.5;
       let recordedSec = 0;
 
-      const stitchVid = document.createElement('video');
-      stitchVid.muted = true;
-      stitchVid.playsInline = true;
-
       try {
+        // 嚴格依據拼接清單 stitchQueue 的順序逐一合成
         for (let i = 0; i < stitchQueue.length; i++) {
           if (isProcessAborted) break;
           const item = stitchQueue[i];
 
-          // 處理相片影格
+          // 1. 處理相片片段
           if (item.type === 'image') {
             const photoDur = item.duration || 3.0;
-            const frames = Math.round(photoDur * 25);
+            const frames = Math.round(photoDur * (fps === 60 ? 40 : 25));
             const stepMs = (photoDur / frames) * 1000;
             const img = item.imgElement;
 
@@ -1557,8 +1811,17 @@
                 }
               }
 
-              const totalPct = Math.min(100, Math.floor(((recordedSec + curElapsed) / totalSec) * 100));
-              processDesc.textContent = `合成進度：${totalPct}% (片段 ${i + 1}/${stitchQueue.length}) [相片]`;
+              const totalRatio = Math.max(0.001, (recordedSec + curElapsed) / totalSec);
+              const totalPct = Math.min(100, Math.floor(totalRatio * 100));
+              processDesc.textContent = `合成進度：${totalPct}% (${i + 1}/${stitchQueue.length}) [相片]`;
+              if (processEtaText) processEtaText.textContent = calcEtaString(exportStartTime, totalRatio);
+              if (processProgressBar) processProgressBar.style.width = `${totalPct}%`;
+
+              // 同步更新當前影格即時預覽畫面
+              if (liveCtx) {
+                liveCtx.drawImage(cvs, 0, 0, exportLiveCanvas.width, exportLiveCanvas.height);
+                if (exportLiveBadge) exportLiveBadge.textContent = `相片 ${i + 1}/${stitchQueue.length}`;
+              }
               await new Promise(r => setTimeout(r, stepMs));
             }
 
@@ -1566,7 +1829,7 @@
             continue;
           }
 
-          // 處理影片影格
+          // 2. 處理影片片段 (精準截取 start ~ end 區間)
           const clipDur = item.end - item.start;
           const u = URL.createObjectURL(item.fileOrBlob);
           stitchVid.src = u;
@@ -1622,8 +1885,17 @@
                 }
               }
 
-              const totalPct = Math.min(100, Math.floor(((recordedSec + curElapsed) / totalSec) * 100));
-              processDesc.textContent = `合成進度：${totalPct}% (片段 ${i + 1}/${stitchQueue.length}) [影片]`;
+              const totalRatio = Math.max(0.001, (recordedSec + curElapsed) / totalSec);
+              const totalPct = Math.min(100, Math.floor(totalRatio * 100));
+              processDesc.textContent = `合成進度：${totalPct}% (${i + 1}/${stitchQueue.length}) [影片]`;
+              if (processEtaText) processEtaText.textContent = calcEtaString(exportStartTime, totalRatio);
+              if (processProgressBar) processProgressBar.style.width = `${totalPct}%`;
+
+              // 同步更新當前影格即時預覽畫面
+              if (liveCtx) {
+                liveCtx.drawImage(cvs, 0, 0, exportLiveCanvas.width, exportLiveCanvas.height);
+                if (exportLiveBadge) exportLiveBadge.textContent = `影片 ${i + 1}/${stitchQueue.length} (${cur.toFixed(1)}s)`;
+              }
 
               if (cur >= item.end || stitchVid.ended) {
                 cancelAnimationFrame(anim);
@@ -1642,19 +1914,26 @@
         recorder.stop();
         if (bgmAudio.src) bgmAudio.pause();
         if (audioCtx) { try { audioCtx.close(); } catch(e){} }
+        if (stitchVid.parentNode) stitchVid.parentNode.removeChild(stitchVid);
         await donePromise;
 
         if (!isProcessAborted && chunks.length > 0) {
           const blob = new Blob(chunks, { type: mime });
+          const customName = (mergedExportNameInput?.value?.trim() || `merged_${Date.now()}`).replace(/[\\/:*?"<>|]/g, '_');
+          const filename = `${customName}.${mime.includes('mp4') ? 'mp4' : 'webm'}`;
           const a = document.createElement('a');
-          a.download = `merged_${Date.now()}.${mime.includes('mp4') ? 'mp4' : 'webm'}`;
+          a.download = filename;
           a.href = URL.createObjectURL(blob);
           a.click();
-          processDesc.textContent = '完整影片合成匯出成功！';
-          setTimeout(() => processModal.classList.add('hidden'), 500);
+          processDesc.textContent = '完整影片依清單拼接匯出成功！';
+          setTimeout(() => {
+            processModal.classList.add('hidden');
+            showExportPreviewModal(blob, filename);
+          }, 400);
         }
       } catch (e) {
         alert('匯出時發生錯誤：' + e.message);
+        if (stitchVid.parentNode) stitchVid.parentNode.removeChild(stitchVid);
         processModal.classList.add('hidden');
       }
     });
